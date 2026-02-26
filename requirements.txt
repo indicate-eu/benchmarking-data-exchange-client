@@ -1,0 +1,6 @@
+typing-extensions >= 4.7.1
+sqlalchemy
+python-dotenv
+psycopg2-binary
+pydantic >= 2
+indicate_data_exchange_api_client

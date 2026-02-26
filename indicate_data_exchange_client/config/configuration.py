@@ -1,0 +1,83 @@
+import os
+import re
+from typing import Optional
+
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+
+class DatabaseConfiguration(BaseModel):
+    host: str = Field(..., description="Hostname or IP address of the database server")
+    port: int = Field(5432,
+                      ge=0,
+                      le=65535,
+                      description="Port number for the database connection")
+    database: str = Field("ohdsi", description="Name of the database")
+    user: str = Field("postgres", description="Username for database authentication")
+    password: Optional[str] = Field(None, description="Password for database authentication")
+
+
+class Configuration(BaseModel):
+    # Database connection (using DBConfiguration from database.py)
+    database: DatabaseConfiguration = Field(..., description="Database connection settings")
+
+    # Provider ID
+    provider_id: str = Field(...,
+                             pattern=re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{8}'),
+                             description="Unique identifier for the data provider")
+
+    # Data Exchange
+    data_exchange_endpoint: str = Field(..., description="URL for the data exchange endpoint")
+
+    # Trigger
+    trigger_address: str = Field("", description="Address to listen on for HTTP trigger requests")
+    trigger_port: int = Field(8080,
+                              ge=0,
+                              le=65535,
+                              description="Port to listen on for HTTP trigger requests")
+
+
+def load_configuration(config_file: str = ".env") -> Configuration:
+    """
+    Loads the configuration from a file or environment variables.
+    Environment variables take precedence over values in the configuration file.
+    """
+
+    load_dotenv(config_file)
+
+    args = {}
+    def maybe_from_env(key, variable_name, transform=None):
+        value = os.getenv(variable_name)
+        if value is None:
+            filename = os.getenv(f"{variable_name}_FILE")
+            if filename is not None:
+                with open(filename) as file:
+                    value = file.read().strip()
+
+        if value is not None:
+            if transform:
+                value = transform(value)
+            container = args
+            if isinstance(key, tuple):
+                for step in key[:-1]:
+                    if step not in container:
+                        container[step] = {}
+                    container = container[step]
+                key = key[-1]
+            container[key] = value
+
+    maybe_from_env(("database", "host"), "DATABASE_HOST")
+    maybe_from_env(("database", "port"), "DATABASE_PORT", int)
+    maybe_from_env(("database", "database"), "DATABASE_NAME")
+    maybe_from_env(("database", "user"), "DATABASE_USER")
+    maybe_from_env(("database", "password"), "DATABASE_PASSWORD")
+    maybe_from_env(("database", "dbschema"), "DATABASE_SCHEMA")
+
+    maybe_from_env("provider_id", "PROVIDER_ID")
+    maybe_from_env("data_exchange_endpoint", "DATA_EXCHANGE_ENDPOINT")
+
+    maybe_from_env("trigger_address", "TRIGGER_ADDRESS")
+    maybe_from_env("trigger_port", "TRIGGER_PORT", int)
+
+    return Configuration(**args)
+
